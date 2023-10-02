@@ -13,7 +13,7 @@
   SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-
+#include "Arduino.h"
 #include "credentials.h"
 #include <WiFiClientSecure.h>
 #include <MQTTClient.h>
@@ -21,14 +21,42 @@
 #include "WiFi.h"
 
 // The MQTT topics that this device should publish/subscribe
-#define AWS_IOT_PUBLISH_TOPIC   "esp32/pub"
-#define AWS_IOT_SUBSCRIBE_TOPIC "esp32/sub"
+#define AWS_IOT_PUBLISH_TOPIC   "esp32/pub"  // Subscribe to a Topic on AWS
+#define AWS_IOT_SUBSCRIBE_TOPIC "esp32/sub"  // Publish to a Topic on AWS
 
 WiFiClientSecure net = WiFiClientSecure();
 MQTTClient client = MQTTClient(256);
 
-void connectAWS()
-{
+// Functions Prototype
+void connectAWS(void);
+void sendMessageToAWS(void);
+void IRAM_ATTR Timer0_ISR();
+
+// Global variables
+int counter = 0, interruptCounter = 0, oldInterruptCounter = 0;
+
+// Pointers
+hw_timer_t *Timer0_Cfg = NULL;
+
+void setup() {
+  Serial.begin(115200);
+  Timer0_Cfg = timerBegin(0, 80, true);
+  timerAttachInterrupt(Timer0_Cfg, &Timer0_ISR, true);
+  timerAlarmWrite(Timer0_Cfg, 1000000, true);
+  timerAlarmEnable(Timer0_Cfg);
+  connectAWS();
+}
+
+void loop() {
+  if(interruptCounter != oldInterruptCounter){
+    oldInterruptCounter = interruptCounter;
+    sendMessageToAWS();
+    client.loop();
+  }  
+  //delay(1000);
+}
+
+void connectAWS() {
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
@@ -38,6 +66,7 @@ void connectAWS()
     delay(500);
     Serial.print(".");
   }
+  Serial.println();
 
   // Configure WiFiClientSecure to use the AWS IoT device credentials
   net.setCACert(AWS_CERT_CA);
@@ -56,6 +85,7 @@ void connectAWS()
     Serial.print(".");
     delay(100);
   }
+  Serial.println();
 
   if(!client.connected()){
     Serial.println("AWS IoT Timeout!");
@@ -68,15 +98,19 @@ void connectAWS()
   Serial.println("AWS IoT Connected!");
 }
 
-void publishMessage()
-{
+void IRAM_ATTR Timer0_ISR() {
+    interruptCounter++;
+}
+
+void sendMessageToAWS() {
   StaticJsonDocument<200> doc;
-  doc["time"] = millis();
-  doc["sensor_a0"] = analogRead(0);
+  doc["Message Counter"] = counter;
+  doc["Message"] = "Hello from the device";
   char jsonBuffer[512];
   serializeJson(doc, jsonBuffer); // print to client
-
+  
   client.publish(AWS_IOT_PUBLISH_TOPIC, jsonBuffer);
+  counter++;
 }
 
 void messageHandler(String &topic, String &payload) {
@@ -85,15 +119,4 @@ void messageHandler(String &topic, String &payload) {
 //  StaticJsonDocument<200> doc;
 //  deserializeJson(doc, payload);
 //  const char* message = doc["message"];
-}
-
-void setup() {
-  Serial.begin(9600);
-  connectAWS();
-}
-
-void loop() {
-  publishMessage();
-  client.loop();
-  delay(1000);
 }
