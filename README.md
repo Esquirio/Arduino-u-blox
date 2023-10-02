@@ -1,2 +1,2 @@
-# Arduino-u-blox-NINA-W10
-Arduino examples for NINA-W10 (u-blox)
+# Arduino-u-blox
+Arduino examples for u-blox modules
